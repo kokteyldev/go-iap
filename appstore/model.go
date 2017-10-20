@@ -71,18 +71,19 @@ type (
 		CancellationDate
 		CancellationReason string `json:"cancellation_reason"`
 	}
-
+	// A custom type to handle mixed typed responses from apple for the app_item_id
+	NumericString string
 	// The Receipt type has whole data of receipt
 	Receipt struct {
-		ReceiptType                string  `json:"receipt_type"`
-		AdamID                     int64   `json:"adam_id"`
-		AppItemID                  int64   `json:"app_item_id"`
-		BundleID                   string  `json:"bundle_id"`
-		ApplicationVersion         string  `json:"application_version"`
-		DownloadID                 int64   `json:"download_id"`
-		VersionExternalIdentifier  int64   `json:"version_external_identifier"`
-		OriginalApplicationVersion string  `json:"original_application_version"`
-		InApp                      []InApp `json:"in_app"`
+		ReceiptType                string        `json:"receipt_type"`
+		AdamID                     int64         `json:"adam_id"`
+		AppItemID                  NumericString `json:"app_item_id"`
+		BundleID                   string        `json:"bundle_id"`
+		ApplicationVersion         string        `json:"application_version"`
+		DownloadID                 int64         `json:"download_id"`
+		VersionExternalIdentifier  int64         `json:"version_external_identifier"`
+		OriginalApplicationVersion string        `json:"original_application_version"`
+		InApp                      []InApp       `json:"in_app"`
 		ReceiptCreationDate
 		RequestDate
 		OriginalPurchaseDate
@@ -113,3 +114,8 @@ type (
 		IsRetryable        bool                 `json:"is-retryable"`
 	}
 )
+
+func (n NumericString) UnmarshalJSON(data []byte) error {
+	n = NumericString(string(data))
+	return nil
+}
