@@ -81,9 +81,12 @@ type (
 		BundleID                   string        `json:"bundle_id"`
 		ApplicationVersion         string        `json:"application_version"`
 		DownloadID                 int64         `json:"download_id"`
-		VersionExternalIdentifier  int64         `json:"version_external_identifier"`
+		VersionExternalIdentifier  NumericString `json:"version_external_identifier"`
 		OriginalApplicationVersion string        `json:"original_application_version"`
 		InApp                      []InApp       `json:"in_app"`
+		ProductID                  string        `json:"product_id"`
+		TransactionID              string        `json:"transaction_id"`
+		PurchaseDate
 		ReceiptCreationDate
 		RequestDate
 		OriginalPurchaseDate

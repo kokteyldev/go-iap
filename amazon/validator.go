@@ -2,7 +2,6 @@ package amazon
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -45,6 +44,11 @@ type IAPResponse struct {
 type IAPResponseError struct {
 	Message string `json:"message"`
 	Status  bool   `json:"status"`
+	Code    int
+}
+
+func (ire IAPResponseError) Error() string {
+	return ire.Message
 }
 
 // IAPClient is an interface to call validation API in Amazon App Store
@@ -106,10 +110,12 @@ func (c Client) Verify(userID string, receiptID string) (IAPResponse, error) {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		responseError := IAPResponseError{}
 		err = json.NewDecoder(resp.Body).Decode(&responseError)
-		return result, errors.New(responseError.Message)
+		if err != nil {
+			return result, err
+		}
+		responseError.Code = resp.StatusCode
+		return result, responseError
 	}
-
 	err = json.NewDecoder(resp.Body).Decode(&result)
-
 	return result, err
 }
