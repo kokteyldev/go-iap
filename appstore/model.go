@@ -62,7 +62,8 @@ type (
 		OriginalTransactionID string `json:"original_transaction_id"`
 		WebOrderLineItemID    string `json:"web_order_line_item_id"`
 
-		IsTrialPeriod string `json:"is_trial_period"`
+		IsTrialPeriod        string `json:"is_trial_period"`
+		IsInIntroOfferPeriod string `json:"is_in_intro_offer_period"`
 		ExpiresDate
 
 		PurchaseDate
@@ -71,8 +72,9 @@ type (
 		CancellationDate
 		CancellationReason string `json:"cancellation_reason"`
 	}
-	// A custom type to handle mixed typed responses from apple for the app_item_id
+	// NumericString A custom type to handle mixed typed responses from apple for the app_item_id
 	NumericString string
+
 	// The Receipt type has whole data of receipt
 	Receipt struct {
 		ReceiptType                string        `json:"receipt_type"`
