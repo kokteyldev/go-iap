@@ -64,6 +64,7 @@ type (
 
 		IsTrialPeriod        string `json:"is_trial_period"`
 		IsInIntroOfferPeriod string `json:"is_in_intro_offer_period"`
+		SubscriptionGroupIdentifier string `json:"subscription_group_identifier"`
 		ExpiresDate
 
 		PurchaseDate
