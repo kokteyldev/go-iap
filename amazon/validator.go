@@ -1,6 +1,7 @@
 package amazon
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -23,21 +24,20 @@ func getSandboxURL() string {
 	return url
 }
 
-// Config is a configuration to initialize client
-type Config struct {
-	IsProduction bool
-	Secret       string
-	TimeOut      time.Duration
-}
-
 // The IAPResponse type has the response properties
 type IAPResponse struct {
 	ReceiptID       string `json:"receiptId"`
 	ProductType     string `json:"productType"`
 	ProductID       string `json:"productId"`
 	PurchaseDate    int64  `json:"purchaseDate"`
+	RenewalDate     int64  `json:"renewalDate"`
 	CancelDate      int64  `json:"cancelDate"`
 	TestTransaction bool   `json:"testTransaction"`
+	BetaProduct     bool   `json:"betaProduct"`
+	ParentProductID string `json:"parentProductId"`
+	Quantity        int64  `json:"quantity"`
+	Term            string `json:"term"`
+	TermSku         string `json:"termSku"`
 }
 
 // The IAPResponseError typs has error message and status.
@@ -53,26 +53,50 @@ func (ire IAPResponseError) Error() string {
 
 // IAPClient is an interface to call validation API in Amazon App Store
 type IAPClient interface {
-	Verify(string, string) (IAPResponse, error)
+	Verify(context.Context, string, string) (IAPResponse, error)
+}
+
+// Config is a configuration to initialize client
+type Config struct {
+	IsProduction bool
+	Secret       string
+	TimeOut      time.Duration
 }
 
 // Client implements IAPClient
 type Client struct {
 	URL     string
 	Secret  string
-	TimeOut time.Duration
+	httpCli *http.Client
 }
 
 // New creates a client object
-func New(secret string) IAPClient {
-	client := Client{
-		URL:     getSandboxURL(),
-		Secret:  secret,
-		TimeOut: time.Second * 5,
+func New(secret string) *Client {
+	client := &Client{
+		URL:    getSandboxURL(),
+		Secret: secret,
+		httpCli: &http.Client{
+			Timeout: 10 * time.Second,
+		},
 	}
 	if os.Getenv("IAP_ENVIRONMENT") == "production" {
 		client.URL = ProductionURL
 	}
+
+	return client
+}
+
+// NewWithClient creates a client with a custom client.
+func NewWithClient(secret string, cli *http.Client) *Client {
+	client := &Client{
+		URL:     getSandboxURL(),
+		Secret:  secret,
+		httpCli: cli,
+	}
+	if os.Getenv("IAP_ENVIRONMENT") == "production" {
+		client.URL = ProductionURL
+	}
+
 	return client
 }
 
@@ -83,9 +107,11 @@ func NewWithConfig(config Config) Client {
 	}
 
 	client := Client{
-		URL:     getSandboxURL(),
-		Secret:  config.Secret,
-		TimeOut: config.TimeOut,
+		URL:    getSandboxURL(),
+		Secret: config.Secret,
+		httpCli: &http.Client{
+			Timeout: config.TimeOut,
+		},
 	}
 	if config.IsProduction {
 		client.URL = ProductionURL
@@ -95,15 +121,18 @@ func NewWithConfig(config Config) Client {
 }
 
 // Verify sends receipts and gets validation result
-func (c Client) Verify(userID string, receiptID string) (IAPResponse, error) {
+func (c *Client) Verify(ctx context.Context, userID string, receiptID string) (IAPResponse, error) {
 	result := IAPResponse{}
 	url := fmt.Sprintf("%v/version/1.0/verifyReceiptId/developer/%v/user/%v/receiptId/%v", c.URL, c.Secret, userID, receiptID)
-	client := http.Client{
-		Timeout: c.TimeOut,
-	}
-	resp, err := client.Get(url)
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return result, fmt.Errorf("%v", err)
+		return result, err
+	}
+	req = req.WithContext(ctx)
+
+	resp, err := c.httpCli.Do(req)
+	if err != nil {
+		return result, err
 	}
 	defer resp.Body.Close()
 
@@ -113,6 +142,7 @@ func (c Client) Verify(userID string, receiptID string) (IAPResponse, error) {
 		if err != nil {
 			return result, err
 		}
+
 		responseError.Code = resp.StatusCode
 		return result, responseError
 	}

@@ -24,4 +24,7 @@ _testmain.go
 *.prof
 
 coverage.txt
+
 .DS_Store
+
+.idea

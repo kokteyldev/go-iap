@@ -1,13 +1,14 @@
 package playstore
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"reflect"
 	"testing"
-	"time"
 
-	"golang.org/x/oauth2"
+	"google.golang.org/api/androidpublisher/v3"
+	"google.golang.org/appengine/urlfetch"
 )
 
 var base64JsonKey = "ew0KICAidHlwZSI6ICJzZXJ2aWNlX2FjY291bnQiLA0KICAicHJvamVjdF9pZCI6ICJnby1pYXAiLA0KICAicHJpdmF0ZV9rZXlfaWQiOiAiZjI0MGRmZTg4Y2NlMTBmMThhZjM2ZjdhNTEyNDUyZjE0Y2RkM2EyZSIsDQogICJwcml2YXRlX2tleSI6ICItLS0tLUJFR0lOIFBSSVZBVEUgS0VZLS0tLS1cbk1JSUV2Z0lCQURBTkJna3Foa2lHOXcwQkFRRUZBQVNDQktnd2dnU2tBZ0VBQW9JQkFRQ29sbndXRmhacjlmQUNcbjNqcEozbGk5SSt4ZzUyZGl3R0pzUnBoY0U0S0xielJpM1ZWdUEvMU1EMkcwMmNOYkZ5V3NDSWg4aDMvNE1sZmxcbmtMa29wVlJlNVFlczRMY3E4RDRVOUdubjZwWXduWlI5NVBlK2Z6TVdLNGJpSWgvdHhNMzJlemxvQWwvaU5Rbi9cbmdQQ3lUc0pHNlVlNzJsdFJyblFXdkM0L24vQzNHL3lLY2ZLaHo2ODZ6NTd4ODZma28yUnEra21RaFNmY3REY3pcbng3YlNmUDU4SFdUOVhDNHlHSERqZmkwMmxnVU1YaW5Fa2VQVzB1UC9SZG8ya0dlaWhSV1JGMFFNRHlld2p1S0pcbmtaL3pCOGhyZm9RVEdmMjE4L29lQXR0UWl0ZkxkVlkrajc5Y2VxQTlBUXorbGoxQjUrSVZiRjlOQ2toaTNYYThcbndHMml6WEViQWdNQkFBRUNnZ0VBTFZnRVdnQm8yWExWc2ovSlY3THBGVDVEUnJFV3VwWGFJeHM5d1k0eHo0VUNcbmh4RFcrSGMwT3Evc2JMTWhleStYbjFUUU9RWk00aG5RVUZ1RG9hNE9LbFBabzZMeFFTaEsybUgrMWpUZlhvWVRcbnVXVExTYjUycENEaTc1R1VHdVNUTFJkcGtsTUpMUk5zOC83ZlBtWTJsTklMekRmbjFlbGhLZmhGVERHZGtmSVNcbkprNjQvd0JTRUx5ZTFQOFdYM0JLV3hZdFBKajgvc0pqTDl0SVhXcitaSjR2bGgzM1c1b25BWS9lMFJoZkZDSjJcbjBFWkZFVXkrblNUVHBUR1JmYzYyMFl2c2JyVWozcFo3dDBIRE5IN3ovbnVEeVB4UUpORTg1RVlQRDBaeU9VNnpcbmV2aW9ObmJBKzFVREdFOVg5NFVVbnJNckJ5NU5Jbk13bCt3djZ5VWFJUUtCZ1FEYnFhazVXbTRla1FJZVpsMmhcbkZ3ZU9TR0FOek9ZVmE3TWExQm9hUHBLKzVuak1xbUQxRHB4cGlFYmFGNnpwVWMyZkVIT0ZEZ21zQUZrYUw1cmNcbnRzVC84amtXRHdKSjAvQlE4QlpiekZuU1I4bHhlbFBscFNySVcremcrNWdhbDZtTXpLS2J0a29TVUsxem5uMnpcbkEydmhTTis5N1VsYTByK2d3ZCttQ0gvTVN3S0JnUURFZWVPbE1vRzM2eWxlRXFOaDdhNUlySWt0dFlCbnJuMXFcblhCSFJmWFQ5c3ROOHhPL0pYQ2s1S1JIREkzUWZJbVcrSmdJV3NwRjY1Q00rZnFRN1l2UWNwV0RGdDZvc1hRNm5cbmVhZC9RYlJ5TzlLcXY3SEo2aHJycGJrS0NvSjBBbFRKZmt4T2svTDBnM3Zkblhia242L3pVeC9JZXRsZHE4T1NcbjNlU2FBbnBNY1FLQmdRQ3diQWQ2Qk9ORXNYcGVLQ0V5N0dncEluL2pGWm9Gd2taTFdlYk5CVXllL2tRdlBQZzZcbldjM09CS0hETUJpMEcvdGxzYlRXUEh3UUpRZHJQS2pJZEJLczdrSmpNUkxKY09zbVZtM2V0TFcvYWVDa3YzYjZcbmpqbGFTbHBxS0NmMTA3RmRZRTJKZWxMcmV0aVViOHJOS0FaUkhsSjFIRXM2SXVHOW4zaWN4VjYvR1FLQmdISElcbnJUK0Vpbjg2MzFBdHR4VUZrd05mZUdwU1RMUys1cjdyNXgzTmJDMW9uUFlMRDFzcjFtdldEd1ZWeVBBbStZa3ZcbmRkSXpRL0ZKb2VlVmJBTkFnV0w5bTVlbGtCWDFKb0Z6QUwvQUM0S0VocktBSmJScnNYOTdFRGh5Y2E1QmsxekZcbm1lZC80eG9iODJZYXhUb09DTlgvODg0azV6RktRZzhTRmt2aTEzVGhBb0dCQUxRV1krV0hDL0hDU3VhaVQ1ck5cbnFiclIwM01BVTg4T3UyelZLZ1FLa0t0eDhaN0RLY2duRmNEWktQOUdPcXJFVjdhZElxdDZIckwvR1FqdVFDSGFcblRoc3dGRmVZM005MEViempGTE1WWVhlaHlFYzJidkJmcFpFSG5UM1VSNXI1ZWRYWmpGYnJySFdDMGFsYnNSR1pcbnZoQ2dBT3c4bk54SFRtMlBrMkZ2bHZyWFxuLS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLVxuIiwNCiAgImNsaWVudF9lbWFpbCI6ICJnby1pYXBAZ28taWFwLmlhbS5nc2VydmljZWFjY291bnQuY29tIiwNCiAgImNsaWVudF9pZCI6ICIxMDMxMTMwNDc5ODIwNjMwMTE3MjciLA0KICAiYXV0aF91cmkiOiAiaHR0cHM6Ly9hY2NvdW50cy5nb29nbGUuY29tL28vb2F1dGgyL2F1dGgiLA0KICAidG9rZW5fdXJpIjogImh0dHBzOi8vYWNjb3VudHMuZ29vZ2xlLmNvbS9vL29hdXRoMi90b2tlbiIsDQogICJhdXRoX3Byb3ZpZGVyX3g1MDlfY2VydF91cmwiOiAiaHR0cHM6Ly93d3cuZ29vZ2xlYXBpcy5jb20vb2F1dGgyL3YxL2NlcnRzIiwNCiAgImNsaWVudF94NTA5X2NlcnRfdXJsIjogImh0dHBzOi8vd3d3Lmdvb2dsZWFwaXMuY29tL3JvYm90L3YxL21ldGFkYXRhL3g1MDkvZ28taWFwJTQwZ28taWFwLmlhbS5nc2VydmljZWFjY291bnQuY29tIg0KfQ=="
@@ -32,106 +33,132 @@ func init() {
 
 func TestNew(t *testing.T) {
 	t.Parallel()
-	// Exception scenario
-	expected := "oauth2: cannot fetch token: 401 Unauthorized\nResponse: {\n  \"error\" : \"invalid_client\",\n  \"error_description\" : \"The OAuth client was invalid.\"\n}"
 
-	actual, _ := New(dummyKey)
-	val := actual.httpClient.Transport.(*oauth2.Transport)
-	token, err := val.Source.Token()
-	if token != nil {
-		t.Errorf("got %#v", token)
-	}
-	if err.Error() != expected {
+	// Exception scenario
+	expected := "oauth2: cannot fetch token: 400 Bad Request\nResponse: {\"error\":\"invalid_grant\",\"error_description\":\"Invalid grant: account not found\"}"
+
+	_, err := New(dummyKey)
+	if err == nil || err.Error() != expected {
 		t.Errorf("got %v\nwant %v", err, expected)
 	}
 
-	// TODO Normal scenario
-	actual, _ = New(jsonKey)
-	val = actual.httpClient.Transport.(*oauth2.Transport)
-	token, err = val.Source.Token()
+	_, actual := New(nil)
+	if actual == nil || actual.Error() != "unexpected end of JSON input" {
+		t.Errorf("got %v\nwant %v", actual, expected)
+	}
+
+	_, err = New(jsonKey)
 	if err != nil {
 		t.Errorf("got %#v", err)
 	}
 }
 
-func TestSetTimeout(t *testing.T) {
+func TestNewWithClient(t *testing.T) {
 	t.Parallel()
-	_timeout := time.Second * 3
-	SetTimeout(_timeout)
 
-	if timeout != _timeout {
-		t.Errorf("got %#v\nwant %#v", timeout, _timeout)
+	ctx := context.Background()
+	httpClient := urlfetch.Client(ctx)
+
+	_, err := NewWithClient(dummyKey, httpClient)
+	if err != nil {
+		t.Errorf("transport should be urlfetch's one")
 	}
 }
 
-func TestVerifySubscription(t *testing.T) {
+func TestNewWithClientErrors(t *testing.T) {
+	t.Parallel()
+	expected := errors.New("client is nil")
+
+	_, actual := NewWithClient(dummyKey, nil)
+	if !reflect.DeepEqual(actual, expected) {
+		t.Errorf("got %v\nwant %v", actual, expected)
+	}
+
+	ctx := context.Background()
+	httpClient := urlfetch.Client(ctx)
+
+	_, actual = NewWithClient(nil, httpClient)
+	if actual == nil || actual.Error() != "unexpected end of JSON input" {
+		t.Errorf("got %v\nwant %v", actual, expected)
+	}
+
+}
+
+func TestAcknowledgeSubscription(t *testing.T) {
 	t.Parallel()
 	// Exception scenario
-	expected := "googleapi: Error 404: No application was found for the given package name., applicationNotFound"
+	expected := "googleapi: Error 400: Invalid Value, invalid"
 
 	client, _ := New(jsonKey)
-	_, err := client.VerifySubscription("package", "subscriptionID", "purchaseToken")
+	ctx := context.Background()
+	req := &androidpublisher.SubscriptionPurchasesAcknowledgeRequest{
+		DeveloperPayload: "user001",
+	}
+	err := client.AcknowledgeSubscription(ctx, "package", "subscriptionID", "purchaseToken", req)
 
-	if err.Error() != expected {
+	if err == nil || err.Error() != expected {
 		t.Errorf("got %v\nwant %v", err, expected)
 	}
 
 	// TODO Normal scenario
 }
 
-func TestVerifySubscriptionAndroidPublisherError(t *testing.T) {
+func TestVerifySubscription(t *testing.T) {
 	t.Parallel()
-	client := Client{nil}
-	expected := errors.New("client is nil")
-	_, actual := client.VerifySubscription("package", "subscriptionID", "purchaseToken")
+	// Exception scenario
+	expected := "googleapi: Error 400: Invalid Value, invalid"
 
-	if !reflect.DeepEqual(actual, expected) {
-		t.Errorf("got %v\nwant %v", actual, expected)
+	client, _ := New(jsonKey)
+	ctx := context.Background()
+	_, err := client.VerifySubscription(ctx, "package", "subscriptionID", "purchaseToken")
+
+	if err == nil || err.Error() != expected {
+		t.Errorf("got %v\nwant %v", err, expected)
 	}
+
+	// TODO Normal scenario
 }
 
 func TestVerifyProduct(t *testing.T) {
 	t.Parallel()
 	// Exception scenario
-	expected := "googleapi: Error 404: No application was found for the given package name., applicationNotFound"
+	expected := "googleapi: Error 400: Invalid Value, invalid"
 
 	client, _ := New(jsonKey)
-	_, err := client.VerifyProduct("package", "productID", "purchaseToken")
+	ctx := context.Background()
+	_, err := client.VerifyProduct(ctx, "package", "productID", "purchaseToken")
 
-	if err.Error() != expected {
+	if err == nil || err.Error() != expected {
 		t.Errorf("got %v", err)
 	}
 
 	// TODO Normal scenario
 }
 
-func TestVerifyProductAndroidPublisherError(t *testing.T) {
+func TestAcknowledgeProduct(t *testing.T) {
 	t.Parallel()
-	client := Client{nil}
-	expected := errors.New("client is nil")
-	_, actual := client.VerifyProduct("package", "productID", "purchaseToken")
+	// Exception scenario
+	expected := "googleapi: Error 400: Invalid Value, invalid"
 
-	if !reflect.DeepEqual(actual, expected) {
-		t.Errorf("got %v\nwant %v", actual, expected)
+	client, _ := New(jsonKey)
+	ctx := context.Background()
+	err := client.AcknowledgeProduct(ctx, "package", "productID", "purchaseToken", "")
+
+	if err == nil || err.Error() != expected {
+		t.Errorf("got %v", err)
 	}
+
+	// TODO Normal scenario
 }
 
 func TestCancelSubscription(t *testing.T) {
 	t.Parallel()
-	// Exception scenario
-	client := Client{nil}
-	expected := errors.New("client is nil")
-	actual := client.CancelSubscription("package", "productID", "purchaseToken")
+	ctx := context.Background()
+	client, _ := New(jsonKey)
+	expectedStr := "googleapi: Error 400: Invalid Value, invalid"
+	actual := client.CancelSubscription(ctx, "package", "productID", "purchaseToken")
 
-	if !reflect.DeepEqual(actual, expected) {
-		t.Errorf("got %v\nwant %v", actual, expected)
-	}
-
-	client, _ = New(jsonKey)
-	expectedStr := "googleapi: Error 404: No application was found for the given package name., applicationNotFound"
-	actual = client.CancelSubscription("package", "productID", "purchaseToken")
-
-	if actual.Error() != expectedStr {
+	if actual == nil || actual.Error() != expectedStr {
 		t.Errorf("got %v\nwant %v", actual, expectedStr)
 	}
 
@@ -140,20 +167,13 @@ func TestCancelSubscription(t *testing.T) {
 
 func TestRefundSubscription(t *testing.T) {
 	t.Parallel()
-	// Exception scenario
-	client := Client{nil}
-	expected := errors.New("client is nil")
-	actual := client.RefundSubscription("package", "productID", "purchaseToken")
 
-	if !reflect.DeepEqual(actual, expected) {
-		t.Errorf("got %v\nwant %v", actual, expected)
-	}
-
-	client, _ = New(jsonKey)
+	ctx := context.Background()
+	client, _ := New(jsonKey)
 	expectedStr := "googleapi: Error 404: No application was found for the given package name., applicationNotFound"
-	actual = client.RefundSubscription("package", "productID", "purchaseToken")
+	actual := client.RefundSubscription(ctx, "package", "productID", "purchaseToken")
 
-	if actual.Error() != expectedStr {
+	if actual == nil || actual.Error() != expectedStr {
 		t.Errorf("got %v\nwant %v", actual, expectedStr)
 	}
 
@@ -162,20 +182,13 @@ func TestRefundSubscription(t *testing.T) {
 
 func TestRevokeSubscription(t *testing.T) {
 	t.Parallel()
-	// Exception scenario
-	client := Client{nil}
-	expected := errors.New("client is nil")
-	actual := client.RevokeSubscription("package", "productID", "purchaseToken")
 
-	if !reflect.DeepEqual(actual, expected) {
-		t.Errorf("got %v\nwant %v", actual, expected)
-	}
-
-	client, _ = New(jsonKey)
+	ctx := context.Background()
+	client, _ := New(jsonKey)
 	expectedStr := "googleapi: Error 404: No application was found for the given package name., applicationNotFound"
-	actual = client.RevokeSubscription("package", "productID", "purchaseToken")
+	actual := client.RevokeSubscription(ctx, "package", "productID", "purchaseToken")
 
-	if actual.Error() != expectedStr {
+	if actual == nil || actual.Error() != expectedStr {
 		t.Errorf("got %v\nwant %v", actual, expectedStr)
 	}
 
@@ -184,54 +197,83 @@ func TestRevokeSubscription(t *testing.T) {
 
 func TestVerifySignature(t *testing.T) {
 	t.Parallel()
-	receipt := `{"orderId":"GPA.xxxx-xxxx-xxxx-xxxxx","packageName":"my.package","productId":"myproduct","purchaseTime":1437564796303,"purchaseState":0,"developerPayload":"user001","purchaseToken":"some-token"}`
+	receipt := []byte(`{"orderId":"GPA.xxxx-xxxx-xxxx-xxxxx","packageName":"my.package","productId":"myproduct","purchaseTime":1437564796303,"purchaseState":0,"developerPayload":"user001","purchaseToken":"some-token"}`)
 
-	// when public key format is invalid base64
-	pubkey := "dummy_public_key"
-	sig := "gj0N8LANKXOw4OhWkS1UZmDVUxM1UIP28F6bDzEp7BCqcVAe0DuDxmAY5wXdEgMRx/VM1Nl2crjogeV60OqCsbIaWqS/ZJwdP127aKR0jk8sbX36ssyYZ0DdZdBdCr1tBZ/eSW1GlGuD/CgVaxns0JaWecXakgoV7j+RF2AFbS4="
-	expectedStr := "failed to decode public key"
-	_, err := VerifySignature(pubkey, []byte(receipt), sig)
-	if err.Error() != expectedStr {
-		t.Errorf("got %v\nwant %v", err, expectedStr)
+	type in struct {
+		pubkey  string
+		receipt []byte
+		sig     string
 	}
 
-	// when pub key is not rsa public key
-	pubkey = "JTbngOdvBE0rfdOs3GeuBnPB+YEP1w/peM4VJbnVz+hN9Td25vPjAznX9YKTGQN4iDohZ07wtl+zYygIcpSCc2ozNZUs9pV0s5itayQo22aT5myJrQmkp94ZSGI2npDP4+FE6ZiF+7khl3qoE0rVZq4G2mfk5LIIyTPTSA4UvyQ="
-	sig = "gj0N8LANKXOw4OhWkS1UZmDVUxM1UIP28F6bDzEp7BCqcVAe0DuDxmAY5wXdEgMRx/VM1Nl2crjogeV60OqCsbIaWqS/ZJwdP127aKR0jk8sbX36ssyYZ0DdZdBdCr1tBZ/eSW1GlGuD/CgVaxns0JaWecXakgoV7j+RF2AFbS4="
-	expectedStr = "failed to parse public key"
-	_, err = VerifySignature(pubkey, []byte(receipt), sig)
-	if err.Error() != expectedStr {
-		t.Errorf("got %v\nwant %v", err, expectedStr)
+	tests := []struct {
+		name  string
+		in    in
+		err   error
+		valid bool
+	}{
+		{
+			name: "public key is invalid base64 format",
+			in: in{
+				pubkey:  "dummy_public_key",
+				receipt: receipt,
+				sig:     "gj0N8LANKXOw4OhWkS1UZmDVUxM1UIP28F6bDzEp7BCqcVAe0DuDxmAY5wXdEgMRx/VM1Nl2crjogeV60OqCsbIaWqS/ZJwdP127aKR0jk8sbX36ssyYZ0DdZdBdCr1tBZ/eSW1GlGuD/CgVaxns0JaWecXakgoV7j+RF2AFbS4=",
+			},
+			err:   errors.New("failed to decode public key"),
+			valid: false,
+		},
+		{
+			name: "public key is not rsa public key",
+			in: in{
+				pubkey:  "JTbngOdvBE0rfdOs3GeuBnPB+YEP1w/peM4VJbnVz+hN9Td25vPjAznX9YKTGQN4iDohZ07wtl+zYygIcpSCc2ozNZUs9pV0s5itayQo22aT5myJrQmkp94ZSGI2npDP4+FE6ZiF+7khl3qoE0rVZq4G2mfk5LIIyTPTSA4UvyQ=",
+				receipt: receipt,
+				sig:     "gj0N8LANKXOw4OhWkS1UZmDVUxM1UIP28F6bDzEp7BCqcVAe0DuDxmAY5wXdEgMRx/VM1Nl2crjogeV60OqCsbIaWqS/ZJwdP127aKR0jk8sbX36ssyYZ0DdZdBdCr1tBZ/eSW1GlGuD/CgVaxns0JaWecXakgoV7j+RF2AFbS4=",
+			},
+			err:   errors.New("failed to parse public key"),
+			valid: false,
+		},
+		{
+			name: "signature is invalid base64 format",
+			in: in{
+				pubkey:  "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDGvModvVUrqJ9C5fy8J77ZQ7JDC6+tf5iK8C74/3mjmcvwo4nmprCgzR/BQIEuZWJi8KX+jiJUXKXF90JPsXHkKAPq6A1SCga7kWvs/M8srMpjNS9zJdwZF+eDOR0+lJEihO04zlpAV9ybPJ3Q621y1HUeVpwdxDNLQpJTuIflnwIDAQAB",
+				receipt: receipt,
+				sig:     "invalid_signature",
+			},
+			err:   errors.New("failed to decode signature"),
+			valid: false,
+		},
+		{
+			name: "signature is invalid",
+			in: in{
+				pubkey:  "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDGvModvVUrqJ9C5fy8J77ZQ7JDC6+tf5iK8C74/3mjmcvwo4nmprCgzR/BQIEuZWJi8KX+jiJUXKXF90JPsXHkKAPq6A1SCga7kWvs/M8srMpjNS9zJdwZF+eDOR0+lJEihO04zlpAV9ybPJ3Q621y1HUeVpwdxDNLQpJTuIflnwIDAQAB",
+				receipt: receipt,
+				sig:     "JTbngOdvBE0rfdOs3GeuBnPB+YEP1w/peM4VJbnVz+hN9Td25vPjAznX9YKTGQN4iDohZ07wtl+zYygIcpSCc2ozNZUs9pV0s5itayQo22aT5myJrQmkp94ZSGI2npDP4+FE6ZiF+7khl3qoE0rVZq4G2mfk5LIIyTPTSA4UvyQ=",
+			},
+			err:   nil,
+			valid: false,
+		},
+		{
+			name: "normal",
+			in: in{
+				pubkey:  "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDGvModvVUrqJ9C5fy8J77ZQ7JDC6+tf5iK8C74/3mjmcvwo4nmprCgzR/BQIEuZWJi8KX+jiJUXKXF90JPsXHkKAPq6A1SCga7kWvs/M8srMpjNS9zJdwZF+eDOR0+lJEihO04zlpAV9ybPJ3Q621y1HUeVpwdxDNLQpJTuIflnwIDAQAB",
+				receipt: receipt,
+				sig:     "gj0N8LANKXOw4OhWkS1UZmDVUxM1UIP28F6bDzEp7BCqcVAe0DuDxmAY5wXdEgMRx/VM1Nl2crjogeV60OqCsbIaWqS/ZJwdP127aKR0jk8sbX36ssyYZ0DdZdBdCr1tBZ/eSW1GlGuD/CgVaxns0JaWecXakgoV7j+RF2AFbS4=",
+			},
+			err:   nil,
+			valid: true,
+		},
 	}
 
-	// when signature is invalid base64 format
-	pubkey = "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDGvModvVUrqJ9C5fy8J77ZQ7JDC6+tf5iK8C74/3mjmcvwo4nmprCgzR/BQIEuZWJi8KX+jiJUXKXF90JPsXHkKAPq6A1SCga7kWvs/M8srMpjNS9zJdwZF+eDOR0+lJEihO04zlpAV9ybPJ3Q621y1HUeVpwdxDNLQpJTuIflnwIDAQAB"
-	sig = "invalid_signature"
-	expectedStr = "failed to decode signature"
-	_, err = VerifySignature(pubkey, []byte(receipt), sig)
-	if err.Error() != expectedStr {
-		t.Errorf("got %v\nwant %v", err, expectedStr)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			valid, err := VerifySignature(tt.in.pubkey, tt.in.receipt, tt.in.sig)
 
-	// when signature is invalid
-	pubkey = "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDGvModvVUrqJ9C5fy8J77ZQ7JDC6+tf5iK8C74/3mjmcvwo4nmprCgzR/BQIEuZWJi8KX+jiJUXKXF90JPsXHkKAPq6A1SCga7kWvs/M8srMpjNS9zJdwZF+eDOR0+lJEihO04zlpAV9ybPJ3Q621y1HUeVpwdxDNLQpJTuIflnwIDAQAB"
-	sig = "JTbngOdvBE0rfdOs3GeuBnPB+YEP1w/peM4VJbnVz+hN9Td25vPjAznX9YKTGQN4iDohZ07wtl+zYygIcpSCc2ozNZUs9pV0s5itayQo22aT5myJrQmkp94ZSGI2npDP4+FE6ZiF+7khl3qoE0rVZq4G2mfk5LIIyTPTSA4UvyQ="
-	isValid, err := VerifySignature(pubkey, []byte(receipt), sig)
-	if err != nil {
-		t.Errorf("got %v\n", err)
-	}
-	if isValid {
-		t.Errorf("got %v\nwant %v", isValid, false)
-	}
+			if valid != tt.valid {
+				t.Errorf("input: %v\nget: %t\nwant: %t\n", tt.in, valid, tt.valid)
+			}
 
-	// when all arguments are valid
-	pubkey = "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDGvModvVUrqJ9C5fy8J77ZQ7JDC6+tf5iK8C74/3mjmcvwo4nmprCgzR/BQIEuZWJi8KX+jiJUXKXF90JPsXHkKAPq6A1SCga7kWvs/M8srMpjNS9zJdwZF+eDOR0+lJEihO04zlpAV9ybPJ3Q621y1HUeVpwdxDNLQpJTuIflnwIDAQAB"
-	sig = "gj0N8LANKXOw4OhWkS1UZmDVUxM1UIP28F6bDzEp7BCqcVAe0DuDxmAY5wXdEgMRx/VM1Nl2crjogeV60OqCsbIaWqS/ZJwdP127aKR0jk8sbX36ssyYZ0DdZdBdCr1tBZ/eSW1GlGuD/CgVaxns0JaWecXakgoV7j+RF2AFbS4="
-	isValid, err = VerifySignature(pubkey, []byte(receipt), sig)
-	if err != nil {
-		t.Errorf("got %v\n", err)
-	}
-	if !isValid {
-		t.Errorf("got %v\nwant %v", isValid, true)
+			if !reflect.DeepEqual(err, tt.err) {
+				t.Errorf("input: %v\nget: %s\nwant: %s\n", tt.in, err, tt.err)
+			}
+		})
 	}
 }

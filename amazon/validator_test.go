@@ -1,10 +1,12 @@
 package amazon
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"reflect"
 	"testing"
@@ -25,6 +27,7 @@ func TestHandle497Error(t *testing.T) {
 	// status 400
 	expected = errors.New("Purchase token/app user mismatch")
 	_, actual = client.Verify(
+		context.Background(),
 		"99FD_DL23EMhrOGDnur9-ulvqomrSg6qyLPSD3CFE=",
 		"q1YqVrJSSs7P1UvMTazKz9PLTCwoTswtyEktM9JLrShIzCvOzM-LL04tiTdW0lFKASo2NDEwMjCwMDM2MTC0AIqVAsUsLd1c4l18jIxdfTOK_N1d8kqLLHVLc8oK83OLgtPNCit9AoJdjJ3dXG2BGkqUrAxrAQ",
 	)
@@ -47,6 +50,7 @@ func TestHandle400Error(t *testing.T) {
 	// status 400
 	expected = errors.New("Failed to parse receipt Id")
 	_, actual = client.Verify(
+		context.Background(),
 		"99FD_DL23EMhrOGDnur9-ulvqomrSg6qyLPSD3CFE=",
 		"q1YqVrJSSs7P1UvMTazKz9PLTCwoTswtyEktM9JLrShIzCvOzM-LL04tiTdW0lFKASo2NDEwMjCwMDM2MTC0AIqVAsUsLd1c4l18jIxdfTOK_N1d8kqLLHVLc8oK83OLgtPNCit9AoJdjJ3dXG2BGkqUrAxrAQ",
 	)
@@ -56,11 +60,12 @@ func TestHandle400Error(t *testing.T) {
 }
 
 func TestNew(t *testing.T) {
-	t.Parallel()
-	expected := Client{
-		URL:     SandboxURL,
-		TimeOut: time.Second * 5,
-		Secret:  "developerSecret",
+	expected := &Client{
+		URL:    SandboxURL,
+		Secret: "developerSecret",
+		httpCli: &http.Client{
+			Timeout: 10 * time.Second,
+		},
 	}
 
 	actual := New("developerSecret")
@@ -70,11 +75,12 @@ func TestNew(t *testing.T) {
 }
 
 func TestNewWithEnvironment(t *testing.T) {
-	t.Parallel()
-	expected := Client{
-		URL:     ProductionURL,
-		TimeOut: time.Second * 5,
-		Secret:  "developerSecret",
+	expected := &Client{
+		URL:    ProductionURL,
+		Secret: "developerSecret",
+		httpCli: &http.Client{
+			Timeout: 10 * time.Second,
+		},
 	}
 
 	os.Setenv("IAP_ENVIRONMENT", "production")
@@ -86,46 +92,57 @@ func TestNewWithEnvironment(t *testing.T) {
 	}
 }
 
-func TestNewWithConfig(t *testing.T) {
-	t.Parallel()
-	config := Config{
-		IsProduction: true,
-		Secret:       "developerSecret",
-		TimeOut:      time.Second * 2,
+func TestNewWithClient(t *testing.T) {
+	expected := &Client{
+		URL:    ProductionURL,
+		Secret: "developerSecret",
+		httpCli: &http.Client{
+			Timeout: time.Second * 2,
+		},
 	}
+	os.Setenv("IAP_ENVIRONMENT", "production")
 
-	expected := Client{
-		URL:     ProductionURL,
-		TimeOut: time.Second * 2,
-		Secret:  "developerSecret",
+	cli := &http.Client{
+		Timeout: time.Second * 2,
 	}
-
-	actual := NewWithConfig(config)
+	actual := NewWithClient("developerSecret", cli)
 	if !reflect.DeepEqual(actual, expected) {
 		t.Errorf("got %v\nwant %v", actual, expected)
 	}
 }
 
-func TestNewWithConfigTimeout(t *testing.T) {
+func TestVerifySubscription(t *testing.T) {
 	t.Parallel()
-	config := Config{
-		IsProduction: true,
-		Secret:       "developerSecret",
+	server, client := testTools(
+		200,
+		"{\"purchaseDate\":1558424877035,\"receiptId\":\"q1YqVrJSSs7P1UvMTazKz9PLTCwoTswtyEktM9JLrShIzCvOzM-LL04tiTdW0lFKASo2NDEwMjCwMDM2MTC0AIqVAsUsLd1c4l18jIxdfTOK_N1d8kqLLHVLc8oK83OLgtPNCit9AoJdjJ3dXG2BGkqUrAxrAQ\",\"productId\":\"com.amazon.iapsamplev2.expansion_set_3\",\"parentProductId\":null,\"productType\":\"SUBSCRIPTION\",\"renewalDate\":1561103277035,\"quantity\":1,\"betaProduct\":false,\"testTransaction\":true,\"term\":\"1 Week\",\"termSku\":\"sub1-weekly\"}",
+	)
+	defer server.Close()
+
+	expected := IAPResponse{
+		ReceiptID:       "q1YqVrJSSs7P1UvMTazKz9PLTCwoTswtyEktM9JLrShIzCvOzM-LL04tiTdW0lFKASo2NDEwMjCwMDM2MTC0AIqVAsUsLd1c4l18jIxdfTOK_N1d8kqLLHVLc8oK83OLgtPNCit9AoJdjJ3dXG2BGkqUrAxrAQ",
+		ProductType:     "SUBSCRIPTION",
+		ProductID:       "com.amazon.iapsamplev2.expansion_set_3",
+		PurchaseDate:    1558424877035,
+		RenewalDate:     1561103277035,
+		CancelDate:      0,
+		TestTransaction: true,
+		Quantity:        1,
+		Term:            "1 Week",
+		TermSku:         "sub1-weekly",
 	}
 
-	expected := Client{
-		URL:     ProductionURL,
-		TimeOut: time.Second * 5,
-		Secret:  "developerSecret",
-	}
-
-	actual := NewWithConfig(config)
+	actual, _ := client.Verify(
+		context.Background(),
+		"99FD_DL23EMhrOGDnur9-ulvqomrSg6qyLPSD3CFE=",
+		"q1YqVrJSSs7P1UvMTazKz9PLTCwoTswtyEktM9JLrShIzCvOzM-LL04tiTdW0lFKASo2NDEwMjCwMDM2MTC0AIqVAsUsLd1c4l18jIxdfTOK_N1d8kqLLHVLc8oK83OLgtPNCit9AoJdjJ3dXG2BGkqUrAxrAQ",
+	)
 	if !reflect.DeepEqual(actual, expected) {
 		t.Errorf("got %v\nwant %v", actual, expected)
 	}
 }
 
-func TestVerify(t *testing.T) {
+func TestVerifyEntitled(t *testing.T) {
 	t.Parallel()
 	server, client := testTools(
 		200,
@@ -140,9 +157,11 @@ func TestVerify(t *testing.T) {
 		PurchaseDate:    1402008634018,
 		CancelDate:      0,
 		TestTransaction: true,
+		Quantity:        1,
 	}
 
 	actual, _ := client.Verify(
+		context.Background(),
 		"99FD_DL23EMhrOGDnur9-ulvqomrSg6qyLPSD3CFE=",
 		"q1YqVrJSSs7P1UvMTazKz9PLTCwoTswtyEktM9JLrShIzCvOzM-LL04tiTdW0lFKASo2NDEwMjCwMDM2MTC0AIqVAsUsLd1c4l18jIxdfTOK_N1d8kqLLHVLc8oK83OLgtPNCit9AoJdjJ3dXG2BGkqUrAxrAQ",
 	)
@@ -157,10 +176,17 @@ func TestVerifyTimeout(t *testing.T) {
 	server, client := testTools(100, "timeout response")
 	defer server.Close()
 
-	expected := errors.New("")
-	_, actual := client.Verify("timeout", "timeout")
-	if !reflect.DeepEqual(reflect.TypeOf(actual), reflect.TypeOf(expected)) {
-		t.Errorf("got %v\nwant %v", actual, expected)
+	ctx := context.Background()
+	_, actual := client.Verify(ctx, "timeout", "timeout")
+
+	// Actual should be a "request canceled" *url.Error
+	urlErr, ok := actual.(*url.Error)
+	if !ok {
+		t.Errorf("Expected *url.Error, got %T", actual)
+	}
+
+	if !urlErr.Timeout() {
+		t.Errorf("got %v\nwant timeout", actual)
 	}
 }
 
@@ -172,6 +198,6 @@ func testTools(code int, body string) (*httptest.Server, *Client) {
 		fmt.Fprintln(w, body)
 	}))
 
-	client := &Client{URL: server.URL, TimeOut: time.Second * 2, Secret: "developerSecret"}
+	client := &Client{URL: server.URL, Secret: "developerSecret", httpCli: &http.Client{Timeout: 2 * time.Second}}
 	return server, client
 }

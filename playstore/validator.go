@@ -11,120 +11,152 @@ import (
 	"net/http"
 	"time"
 
+	"google.golang.org/api/option"
+
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
-	androidpublisher "google.golang.org/api/androidpublisher/v2"
+	androidpublisher "google.golang.org/api/androidpublisher/v3"
 )
 
-const (
-	defaultTimeout = time.Second * 5
-)
+//go:generate mockgen  -destination=mocks/playstore.go -package=mocks github.com/awa/go-iap/playstore IABProduct,IABSubscription
 
-var timeout = defaultTimeout
-
-// SetTimeout sets dial timeout duration
-func SetTimeout(t time.Duration) {
-	timeout = t
+// The IABProduct type is an interface for product service
+type IABProduct interface {
+	VerifyProduct(context.Context, string, string, string) (*androidpublisher.ProductPurchase, error)
+	AcknowledgeProduct(context.Context, string, string, string, string) error
 }
 
-// The IABClient type is an interface to verify purchase token
-type IABClient interface {
-	VerifySubscription(string, string, string) (*androidpublisher.SubscriptionPurchase, error)
-	VerifyProduct(string, string, string) (*androidpublisher.ProductPurchase, error)
-	CancelSubscription(string, string, string) error
-	RefundSubscription(string, string, string) error
-	RevokeSubscription(string, string, string) error
+// The IABSubscription type is an interface  for subscription service
+type IABSubscription interface {
+	AcknowledgeSubscription(context.Context, string, string, string, *androidpublisher.SubscriptionPurchasesAcknowledgeRequest) error
+	VerifySubscription(context.Context, string, string, string) (*androidpublisher.SubscriptionPurchase, error)
+	CancelSubscription(context.Context, string, string, string) error
+	RefundSubscription(context.Context, string, string, string) error
+	RevokeSubscription(context.Context, string, string, string) error
 }
 
 // The Client type implements VerifySubscription method
 type Client struct {
-	httpClient *http.Client
+	service *androidpublisher.Service
 }
 
 // New returns http client which includes the credentials to access androidpublisher API.
 // You should create a service account for your project at
 // https://console.developers.google.com and download a JSON key file to set this argument.
-func New(jsonKey []byte) (Client, error) {
-	ctx := context.WithValue(oauth2.NoContext, oauth2.HTTPClient, &http.Client{
-		Timeout: timeout,
-	})
+func New(jsonKey []byte) (*Client, error) {
+	c := &http.Client{Timeout: 10 * time.Second}
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, c)
 
 	conf, err := google.JWTConfigFromJSON(jsonKey, androidpublisher.AndroidpublisherScope)
-
-	return Client{conf.Client(ctx)}, err
-}
-
-// VerifySubscription verifies subscription status
-func (c *Client) VerifySubscription(
-	packageName string,
-	subscriptionID string,
-	token string,
-) (*androidpublisher.SubscriptionPurchase, error) {
-	service, err := androidpublisher.New(c.httpClient)
 	if err != nil {
 		return nil, err
 	}
 
-	ps := androidpublisher.NewPurchasesSubscriptionsService(service)
-	result, err := ps.Get(packageName, subscriptionID, token).Do()
+	val := conf.Client(ctx).Transport.(*oauth2.Transport)
+	_, err = val.Source.Token()
+	if err != nil {
+		return nil, err
+	}
+
+	service, err := androidpublisher.NewService(ctx, option.WithHTTPClient(conf.Client(ctx)))
+	if err != nil {
+		return nil, err
+	}
+
+	return &Client{service}, err
+}
+
+// NewWithClient returns http client which includes the custom http client.
+func NewWithClient(jsonKey []byte, cli *http.Client) (*Client, error) {
+	if cli == nil {
+		return nil, fmt.Errorf("client is nil")
+	}
+
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, cli)
+
+	conf, err := google.JWTConfigFromJSON(jsonKey, androidpublisher.AndroidpublisherScope)
+	if err != nil {
+		return nil, err
+	}
+
+	service, err := androidpublisher.NewService(ctx, option.WithHTTPClient(conf.Client(ctx)))
+	if err != nil {
+		return nil, err
+	}
+
+	return &Client{service}, err
+}
+
+// AcknowledgeSubscription acknowledges a subscription purchase.
+func (c *Client) AcknowledgeSubscription(
+	ctx context.Context,
+	packageName string,
+	subscriptionID string,
+	token string,
+	req *androidpublisher.SubscriptionPurchasesAcknowledgeRequest,
+) error {
+	ps := androidpublisher.NewPurchasesSubscriptionsService(c.service)
+	err := ps.Acknowledge(packageName, subscriptionID, token, req).Context(ctx).Do()
+
+	return err
+}
+
+// VerifySubscription verifies subscription status
+func (c *Client) VerifySubscription(
+	ctx context.Context,
+	packageName string,
+	subscriptionID string,
+	token string,
+) (*androidpublisher.SubscriptionPurchase, error) {
+	ps := androidpublisher.NewPurchasesSubscriptionsService(c.service)
+	result, err := ps.Get(packageName, subscriptionID, token).Context(ctx).Do()
 
 	return result, err
 }
 
 // VerifyProduct verifies product status
 func (c *Client) VerifyProduct(
+	ctx context.Context,
 	packageName string,
 	productID string,
 	token string,
 ) (*androidpublisher.ProductPurchase, error) {
-	service, err := androidpublisher.New(c.httpClient)
-	if err != nil {
-		return nil, err
-	}
-
-	ps := androidpublisher.NewPurchasesProductsService(service)
-	result, err := ps.Get(packageName, productID, token).Do()
+	ps := androidpublisher.NewPurchasesProductsService(c.service)
+	result, err := ps.Get(packageName, productID, token).Context(ctx).Do()
 
 	return result, err
 }
 
-// CancelSubscription cancels a user's subscription purchase.
-func (c *Client) CancelSubscription(packageName string, subscriptionID string, token string) error {
-	service, err := androidpublisher.New(c.httpClient)
-	if err != nil {
-		return err
-	}
+func (c *Client) AcknowledgeProduct(ctx context.Context, packageName, productID, token, developerPayload string) error {
+	ps := androidpublisher.NewPurchasesProductsService(c.service)
+	acknowledgeRequest := &androidpublisher.ProductPurchasesAcknowledgeRequest{DeveloperPayload: developerPayload}
+	err := ps.Acknowledge(packageName, productID, token, acknowledgeRequest).Context(ctx).Do()
 
-	ps := androidpublisher.NewPurchasesSubscriptionsService(service)
-	err = ps.Cancel(packageName, subscriptionID, token).Do()
+	return err
+}
+
+// CancelSubscription cancels a user's subscription purchase.
+func (c *Client) CancelSubscription(ctx context.Context, packageName string, subscriptionID string, token string) error {
+	ps := androidpublisher.NewPurchasesSubscriptionsService(c.service)
+	err := ps.Cancel(packageName, subscriptionID, token).Context(ctx).Do()
 
 	return err
 }
 
 // RefundSubscription refunds a user's subscription purchase, but the subscription remains valid
 // until its expiration time and it will continue to recur.
-func (c *Client) RefundSubscription(packageName string, subscriptionID string, token string) error {
-	service, err := androidpublisher.New(c.httpClient)
-	if err != nil {
-		return err
-	}
-
-	ps := androidpublisher.NewPurchasesSubscriptionsService(service)
-	err = ps.Refund(packageName, subscriptionID, token).Do()
+func (c *Client) RefundSubscription(ctx context.Context, packageName string, subscriptionID string, token string) error {
+	ps := androidpublisher.NewPurchasesSubscriptionsService(c.service)
+	err := ps.Refund(packageName, subscriptionID, token).Context(ctx).Do()
 
 	return err
 }
 
 // RevokeSubscription refunds and immediately revokes a user's subscription purchase.
 // Access to the subscription will be terminated immediately and it will stop recurring.
-func (c *Client) RevokeSubscription(packageName string, subscriptionID string, token string) error {
-	service, err := androidpublisher.New(c.httpClient)
-	if err != nil {
-		return err
-	}
-
-	ps := androidpublisher.NewPurchasesSubscriptionsService(service)
-	err = ps.Revoke(packageName, subscriptionID, token).Do()
+func (c *Client) RevokeSubscription(ctx context.Context, packageName string, subscriptionID string, token string) error {
+	ps := androidpublisher.NewPurchasesSubscriptionsService(c.service)
+	err := ps.Revoke(packageName, subscriptionID, token).Context(ctx).Do()
 
 	return err
 }
